@@ -6,9 +6,8 @@ import threading
 import time
 
 import darkdetect
-import keyboard
+from pynput import keyboard
 import pyperclip
-import win32clipboard
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Signal, Slot
 from PySide6.QtGui import QCursor, QGuiApplication
@@ -27,12 +26,16 @@ class WritingToolApp(QtWidgets.QApplication):
     """
     output_ready_signal = Signal(str)
     show_message_signal = Signal(str, str)  # New signal for showing message boxes
+    hotkey_triggered_signal = Signal()
 
     def __init__(self, argv):
         super().__init__(argv)
         logging.debug('Initializing WritingToolApp')
         self.output_ready_signal.connect(self.replace_text)
-        self.show_message_signal.connect(self.show_message_box)  # Connect new signal
+        self.show_message_signal.connect(self.show_message_box)
+        self.hotkey_triggered_signal.connect(self.on_hotkey_pressed)
+        self.config = None
+        self.config_path = None
         self.load_config()
         self.onboarding_window = None
         self.popup_window = None
@@ -42,6 +45,8 @@ class WritingToolApp(QtWidgets.QApplication):
         self.registered_hotkey = None
         self.output_queue = ""
         self.last_replace = 0
+        self.stop_event = threading.Event()
+        self.listener_thread = None
 
         # Setup available AI providers
         self.providers = [Gemini15FlashProvider(self), OpenAICompatibleProvider(self)]
@@ -70,6 +75,7 @@ class WritingToolApp(QtWidgets.QApplication):
         Load the configuration file.
         """
         self.config_path = os.path.join(os.path.dirname(sys.argv[0]), 'config.json')
+        print(self.config_path)
         logging.debug(f'Loading config from {self.config_path}')
         if os.path.exists(self.config_path):
             with open(self.config_path, 'r') as f:
@@ -84,7 +90,7 @@ class WritingToolApp(QtWidgets.QApplication):
         Save the configuration file.
         """
         with open(self.config_path, 'w') as f:
-            json.dump(config, f)
+            json.dump(config, f, indent=4)
             logging.debug('Config saved successfully')
         self.config = config
 
@@ -96,22 +102,52 @@ class WritingToolApp(QtWidgets.QApplication):
         self.onboarding_window = OnboardingWindow(self)
         self.onboarding_window.show()
 
+    def start_hotkey_listener(self):
+        shortcut = self.config.get('shortcut', '<ctrl>+<alt>+h')
+        logging.debug(f'Registering global hotkey for shortcut: {shortcut}')
+
+        def on_activate():
+            logging.debug('triggered hotkey')
+            self.hotkey_triggered_signal.emit()  # Emit the signal when hotkey is pressed
+
+        # Define the hotkey combination (Ctrl + Alt + H)
+        hotkey = keyboard.HotKey(
+            keyboard.HotKey.parse(shortcut),
+            on_activate
+        )
+        self.registered_hotkey = shortcut
+
+        # Helper function to standardize key event
+        def for_canonical(f):
+            return lambda k: f(listener.canonical(k))
+
+        # Create a listener and store it as an attribute to stop it later
+        listener = keyboard.Listener(
+            on_press=for_canonical(hotkey.press),
+            on_release=for_canonical(hotkey.release)
+        )
+
+        # Start the listener
+        listener.start()
+
+        # Keep the thread alive until the stop_event is set
+        self.stop_event.wait()
+        listener.stop()
+
     def register_hotkey(self):
         """
         Register the global hotkey for activating Writing Tools.
         """
-        shortcut = self.config.get('shortcut', 'ctrl+space')
-        logging.debug(f'Registering global hotkey for shortcut: {shortcut}')
-        try:
-            if self.registered_hotkey:
-                keyboard.remove_hotkey(self.registered_hotkey)
+        if self.listener_thread is not None:
+            logging.debug('Stopping previous listener')
+            self.stop_event.set()
+            self.listener_thread.join()
 
-            keyboard.add_hotkey(shortcut, self.on_hotkey_pressed)
-            self.registered_hotkey = shortcut
-
-            logging.debug('Hotkey registered successfully')
-        except Exception as e:
-            logging.error(f'Failed to register hotkey: {e}')
+        self.stop_event.clear()
+        logging.debug('Launching new listener thread')
+        self.listener_thread = threading.Thread(target=self.start_hotkey_listener, daemon=True)
+        self.listener_thread.start()
+        logging.debug('listener thread started')
 
     def on_hotkey_pressed(self):
         """
@@ -188,7 +224,16 @@ class WritingToolApp(QtWidgets.QApplication):
 
         # Simulate Ctrl+C
         logging.debug('Simulating Ctrl+C')
-        keyboard.press_and_release('ctrl+c')
+
+        kbrd = keyboard.Controller()
+
+        def press_ctrl_c():
+            kbrd.press(keyboard.Key.ctrl)
+            kbrd.press('c')
+            kbrd.release('c')
+            kbrd.release(keyboard.Key.ctrl)
+
+        press_ctrl_c()
 
         # Wait for the clipboard to update
         time.sleep(0.02)
@@ -202,17 +247,15 @@ class WritingToolApp(QtWidgets.QApplication):
 
         return selected_text
 
-    def clear_clipboard(self):
+    @staticmethod
+    def clear_clipboard():
         """
         Clear the system clipboard.
         """
         try:
-            win32clipboard.OpenClipboard()
-            win32clipboard.EmptyClipboard()
+            pyperclip.copy('')
         except Exception as e:
             logging.error(f'Error clearing clipboard: {e}')
-        finally:
-            win32clipboard.CloseClipboard()
 
     def process_option(self, option, selected_text, custom_change=None):
         """
@@ -289,7 +332,6 @@ class WritingToolApp(QtWidgets.QApplication):
             logging.error(f'An error occurred: {e}', exc_info=True)
             self.show_message_signal.emit('Error', f'An error occurred: {e}')
 
-
     @Slot(str, str)
     def show_message_box(self, title, message):
         """
@@ -324,10 +366,18 @@ class WritingToolApp(QtWidgets.QApplication):
 
                 # Set the clipboard to the new text
                 pyperclip.copy(self.output_queue)
-
                 # Simulate Ctrl+V
                 logging.debug('Simulating Ctrl+V')
-                keyboard.press_and_release('ctrl+v')
+
+                kbrd = keyboard.Controller()
+
+                def press_ctrl_v():
+                    kbrd.press(keyboard.Key.ctrl.value)
+                    kbrd.press('v')
+                    kbrd.release('v')
+                    kbrd.release(keyboard.Key.ctrl.value)
+
+                press_ctrl_v()
 
                 # Wait for the paste operation to complete
                 time.sleep(0.02)
@@ -377,7 +427,8 @@ class WritingToolApp(QtWidgets.QApplication):
         self.tray_icon.show()
         logging.debug('Tray icon displayed')
 
-    def apply_dark_mode_styles(self, menu):
+    @staticmethod
+    def apply_dark_mode_styles(menu):
         """
         Apply styles to the tray menu based on system theme using darkdetect.
         """
@@ -419,5 +470,9 @@ class WritingToolApp(QtWidgets.QApplication):
         """
         Exit the application.
         """
+        logging.debug('Stopping the listener')
+        self.stop_event.set()  # Set the stop_event to stop the hotkey listener
+        if self.listener_thread is not None:
+            self.listener_thread.join()
         logging.debug('Exiting application')
         self.quit()
