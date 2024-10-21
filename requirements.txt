@@ -1,7 +1,0 @@
-darkdetect
-google-generativeai
-openai
-pyperclip
-PySide6
-protobuf
-pynput

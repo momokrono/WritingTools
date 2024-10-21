@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "WritingTools"
+version = "0.3.0"
+description = "A better version of Apple Intelligence Writing Tools for Windows and Linux."
+authors = [
+    "Jesai Tarun jesaitarun@gmail.com",
+    "and all other contributors"
+]
+
+[tool.poetry.dependencies]
+darkdetect = "*"
+google-generativeai = "*"
+openai = "*"
+pyperclip = "*"
+PySide6 = "*"
+protobuf = "*"
+pynput = "*"
+keyboard = "*"
+pywin32 = { version = "*", platform = "win32" }
