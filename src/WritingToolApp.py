@@ -20,14 +20,7 @@ from ui.CustomPopupWindow import CustomPopupWindow
 from ui.OnboardingWindow import OnboardingWindow
 from ui.SettingsWindow import SettingsWindow
 
-ON_WINDOWS = False
-
-if platform.system() == 'Windows':
-    ON_WINDOWS = True
-    import keyboard
-    import win32clipboard
-else:
-    from pynput import keyboard as pykeyboard
+from pynput import keyboard as pykeyboard
 
 
 class WritingToolApp(QtWidgets.QApplication):
@@ -55,8 +48,7 @@ class WritingToolApp(QtWidgets.QApplication):
         self.registered_hotkey = None
         self.output_queue = ""
         self.last_replace = 0
-        if not ON_WINDOWS:
-            self.hotkey_listener = None
+        self.hotkey_listener = None
 
         # Setup available AI providers
         self.providers = [Gemini15FlashProvider(self), OpenAICompatibleProvider(self)]
@@ -155,22 +147,9 @@ class WritingToolApp(QtWidgets.QApplication):
         """
         Register the global hotkey for activating Writing Tools.
         """
-        if ON_WINDOWS:
-            shortcut = self.config.get('shortcut', 'ctrl+space')
-            try:
-                if self.registered_hotkey:
-                    keyboard.remove_hotkey(self.registered_hotkey)
-
-                keyboard.add_hotkey(shortcut, self.on_hotkey_pressed)
-                self.registered_hotkey = shortcut
-
-                logging.debug('Hotkey registered successfully')
-            except Exception as e:
-                logging.error(f'Failed to register hotkey: {e}')
-        else:
-            logging.debug('Registering hotkey')
-            self.start_hotkey_listener()
-            logging.debug('Hotkey registered')
+        logging.debug('Registering hotkey')
+        self.start_hotkey_listener()
+        logging.debug('Hotkey registered')
 
     def on_hotkey_pressed(self):
         """
@@ -248,18 +227,15 @@ class WritingToolApp(QtWidgets.QApplication):
         # Simulate Ctrl+C
         logging.debug('Simulating Ctrl+C')
 
-        if ON_WINDOWS:
-            keyboard.press_and_release('ctrl+c')
-        else:
-            kbrd = pykeyboard.Controller()
+        kbrd = pykeyboard.Controller()
 
-            def press_ctrl_c():
-                kbrd.press(pykeyboard.Key.ctrl.value)
-                kbrd.press('c')
-                kbrd.release('c')
-                kbrd.release(pykeyboard.Key.ctrl.value)
+        def press_ctrl_c():
+            kbrd.press(pykeyboard.Key.ctrl.value)
+            kbrd.press('c')
+            kbrd.release('c')
+            kbrd.release(pykeyboard.Key.ctrl.value)
 
-            press_ctrl_c()
+        press_ctrl_c()
 
         # Wait for the clipboard to update
         time.sleep(0.02)
@@ -279,16 +255,10 @@ class WritingToolApp(QtWidgets.QApplication):
         Clear the system clipboard.
         """
         try:
-            if ON_WINDOWS:
-                win32clipboard.OpenClipboard()
-                win32clipboard.EmptyClipboard()
-            else:
-                pyperclip.copy('')
+            pyperclip.copy('')
         except Exception as e:
             logging.error(f'Error clearing clipboard: {e}')
-        finally:
-            if ON_WINDOWS:
-                win32clipboard.CloseClipboard()
+
 
     def process_option(self, option, selected_text, custom_change=None):
         """
@@ -402,18 +372,15 @@ class WritingToolApp(QtWidgets.QApplication):
                 # Simulate Ctrl+V
                 logging.debug('Simulating Ctrl+V')
 
-                if ON_WINDOWS:
-                    keyboard.press_and_release('ctrl+v')
-                else:
-                    kbrd = pykeyboard.Controller()
+                kbrd = pykeyboard.Controller()
 
-                    def press_ctrl_v():
-                        kbrd.press(pykeyboard.Key.ctrl.value)
-                        kbrd.press('v')
-                        kbrd.release('v')
-                        kbrd.release(pykeyboard.Key.ctrl.value)
+                def press_ctrl_v():
+                    kbrd.press(pykeyboard.Key.ctrl.value)
+                    kbrd.press('v')
+                    kbrd.release('v')
+                    kbrd.release(pykeyboard.Key.ctrl.value)
 
-                    press_ctrl_v()
+                press_ctrl_v()
 
                 # Wait for the paste operation to complete
                 time.sleep(0.05)
@@ -508,8 +475,7 @@ class WritingToolApp(QtWidgets.QApplication):
         Exit the application.
         """
         logging.debug('Stopping the listener')
-        if not ON_WINDOWS:
-            if self.hotkey_listener is not None:
-                self.hotkey_listener.stop()
+        if self.hotkey_listener is not None:
+            self.hotkey_listener.stop()
         logging.debug('Exiting application')
         self.quit()
