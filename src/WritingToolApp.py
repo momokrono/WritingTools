@@ -484,13 +484,14 @@ class WritingToolApp(QtWidgets.QApplication):
 
         menu.setPalette(palette)
 
-    def show_settings(self):
+    def show_settings(self, providers_only=False):
         """
         Show the settings window.
         """
         logging.debug('Showing settings window')
         if not self.settings_window:
-            self.settings_window = SettingsWindow(self)
+            self.settings_window = SettingsWindow(self, providers_only)
+            self.settings_window.close_signal.connect(self.exit_app)
         self.settings_window.show()
 
     def show_about(self):

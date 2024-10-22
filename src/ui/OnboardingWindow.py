@@ -112,7 +112,7 @@ class OnboardingWindow(QtWidgets.QWidget):
         self.show_api_key_input()
 
     def show_api_key_input(self):
-        SettingsWindow(self.app, True).show()
+        self.app.show_settings(providers_only=True)
         self.self_close = True
         self.close()
 
