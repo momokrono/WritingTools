@@ -27,7 +27,7 @@ if platform.system() == 'Windows':
     import keyboard
     import win32clipboard
 else:
-    from pynput import keyboard
+    from pynput import keyboard as pykeyboard
 
 
 class WritingToolApp(QtWidgets.QApplication):
@@ -56,8 +56,7 @@ class WritingToolApp(QtWidgets.QApplication):
         self.output_queue = ""
         self.last_replace = 0
         if not ON_WINDOWS:
-            self.stop_event = threading.Event()
-            self.listener_thread = None
+            self.hotkey_listener = None
 
         # Setup available AI providers
         self.providers = [Gemini15FlashProvider(self), OpenAICompatibleProvider(self)]
@@ -114,38 +113,42 @@ class WritingToolApp(QtWidgets.QApplication):
         self.onboarding_window.show()
 
     def start_hotkey_listener(self):
+        """
+        Create listener for hotkeys on Linux/Mac.
+        """
         orig_shortcut = self.config.get('shortcut', 'ctrl+space')
-        # for example ctrl+alt+h -> <ctrl>+<alt>+h
+        # Parse the shortcut string, for example ctrl+alt+h -> <ctrl>+<alt>+h
         shortcut = '+'.join([f'{t}' if len(t) <= 1 else f'<{t}>' for t in orig_shortcut.split('+')])
         logging.debug(f'Registering global hotkey for shortcut: {shortcut}')
+        try:
+            if self.hotkey_listener is not None:
+                self.hotkey_listener.stop()
 
-        def on_activate():
-            logging.debug('triggered hotkey')
-            self.hotkey_triggered_signal.emit()  # Emit the signal when hotkey is pressed
+            def on_activate():
+                logging.debug('triggered hotkey')
+                self.hotkey_triggered_signal.emit()  # Emit the signal when hotkey is pressed
 
-        # Define the hotkey combination (Ctrl + Alt + H)
-        hotkey = keyboard.HotKey(
-            keyboard.HotKey.parse(shortcut),
-            on_activate
-        )
-        self.registered_hotkey = orig_shortcut
+            # Define the hotkey combination
+            hotkey = pykeyboard.HotKey(
+                pykeyboard.HotKey.parse(shortcut),
+                on_activate
+            )
+            self.registered_hotkey = orig_shortcut
 
-        # Helper function to standardize key event
-        def for_canonical(f):
-            return lambda k: f(listener.canonical(k))
+            # Helper function to standardize key event
+            def for_canonical(f):
+                return lambda k: f(self.hotkey_listener.canonical(k))
 
-        # Create a listener and store it as an attribute to stop it later
-        listener = keyboard.Listener(
-            on_press=for_canonical(hotkey.press),
-            on_release=for_canonical(hotkey.release)
-        )
+            # Create a listener and store it as an attribute to stop it later
+            self.hotkey_listener = pykeyboard.Listener(
+                on_press=for_canonical(hotkey.press),
+                on_release=for_canonical(hotkey.release)
+            )
 
-        # Start the listener
-        listener.start()
-
-        # Keep the thread alive until the stop_event is set
-        self.stop_event.wait()
-        listener.stop()
+            # Start the listener
+            self.hotkey_listener.start()
+        except Exception as e:
+            logging.error(f'Failed to register global hotkey: {e}')
 
     def register_hotkey(self):
         """
@@ -164,16 +167,9 @@ class WritingToolApp(QtWidgets.QApplication):
             except Exception as e:
                 logging.error(f'Failed to register hotkey: {e}')
         else:
-            if self.listener_thread is not None:
-                logging.debug('Stopping previous listener')
-                self.stop_event.set()
-                self.listener_thread.join()
-
-            self.stop_event.clear()
-            logging.debug('Launching new listener thread')
-            self.listener_thread = threading.Thread(target=self.start_hotkey_listener, daemon=True)
-            self.listener_thread.start()
-            logging.debug('listener thread started')
+            logging.debug('Registering hotkey')
+            self.start_hotkey_listener()
+            logging.debug('Hotkey registered')
 
     def on_hotkey_pressed(self):
         """
@@ -254,13 +250,13 @@ class WritingToolApp(QtWidgets.QApplication):
         if ON_WINDOWS:
             keyboard.press_and_release('ctrl+c')
         else:
-            kbrd = keyboard.Controller()
+            kbrd = pykeyboard.Controller()
 
             def press_ctrl_c():
-                kbrd.press(keyboard.Key.ctrl.value)
+                kbrd.press(pykeyboard.Key.ctrl.value)
                 kbrd.press('c')
                 kbrd.release('c')
-                kbrd.release(keyboard.Key.ctrl.value)
+                kbrd.release(pykeyboard.Key.ctrl.value)
 
             press_ctrl_c()
 
@@ -408,13 +404,13 @@ class WritingToolApp(QtWidgets.QApplication):
                 if ON_WINDOWS:
                     keyboard.press_and_release('ctrl+v')
                 else:
-                    kbrd = keyboard.Controller()
+                    kbrd = pykeyboard.Controller()
 
                     def press_ctrl_v():
-                        kbrd.press(keyboard.Key.ctrl.value)
+                        kbrd.press(pykeyboard.Key.ctrl.value)
                         kbrd.press('v')
                         kbrd.release('v')
-                        kbrd.release(keyboard.Key.ctrl.value)
+                        kbrd.release(pykeyboard.Key.ctrl.value)
 
                     press_ctrl_v()
 
@@ -511,8 +507,6 @@ class WritingToolApp(QtWidgets.QApplication):
         """
         logging.debug('Stopping the listener')
         if not ON_WINDOWS:
-            self.stop_event.set()  # Set the stop_event to stop the hotkey listener
-            if self.listener_thread is not None:
-                self.listener_thread.join()
+            self.hotkey_listener.stop()
         logging.debug('Exiting application')
         self.quit()
