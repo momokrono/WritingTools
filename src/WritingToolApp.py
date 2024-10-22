@@ -197,6 +197,10 @@ class WritingToolApp(QtWidgets.QApplication):
             # Show the popup to get its size
             self.popup_window.show()
             self.popup_window.adjustSize()
+            # Ensure the popup it's focused, even on lower-end machines
+            self.popup_window.activateWindow()
+            QtCore.QTimer.singleShot(100, self.popup_window.custom_input.setFocus)
+
             popup_width = self.popup_window.width()
             popup_height = self.popup_window.height()
             # Calculate position
@@ -258,7 +262,6 @@ class WritingToolApp(QtWidgets.QApplication):
             pyperclip.copy('')
         except Exception as e:
             logging.error(f'Error clearing clipboard: {e}')
-
 
     def process_option(self, option, selected_text, custom_change=None):
         """
