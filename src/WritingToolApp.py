@@ -110,6 +110,7 @@ class WritingToolApp(QtWidgets.QApplication):
         """
         logging.debug('Showing onboarding window')
         self.onboarding_window = OnboardingWindow(self)
+        self.onboarding_window.close_signal.connect(self.exit_app)
         self.onboarding_window.show()
 
     def start_hotkey_listener(self):
@@ -507,6 +508,7 @@ class WritingToolApp(QtWidgets.QApplication):
         """
         logging.debug('Stopping the listener')
         if not ON_WINDOWS:
-            self.hotkey_listener.stop()
+            if self.hotkey_listener is not None:
+                self.hotkey_listener.stop()
         logging.debug('Exiting application')
         self.quit()

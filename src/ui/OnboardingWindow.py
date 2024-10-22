@@ -8,12 +8,16 @@ from ui.UIUtils import UIUtils, colorMode
 
 
 class OnboardingWindow(QtWidgets.QWidget):
+    # Closing signal
+    close_signal = QtCore.Signal()
+
     def __init__(self, app):
         super().__init__()
         self.app = app
         self.shortcut = 'ctrl+space'
         self.theme = 'gradient'
         self.init_ui()
+        self.self_close = False
 
     def init_ui(self):
         logging.debug('Initializing onboarding UI')
@@ -109,4 +113,11 @@ class OnboardingWindow(QtWidgets.QWidget):
 
     def show_api_key_input(self):
         SettingsWindow(self.app, True).show()
+        self.self_close = True
         self.close()
+
+    def closeEvent(self, event):
+        # Emit the close signal
+        if not self.self_close:
+            self.close_signal.emit()
+        super().closeEvent(event)
